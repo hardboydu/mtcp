@@ -1,5 +1,5 @@
-#ifndef __IO_MODULE_H__
-#define __IO_MODULE_H__
+#ifndef IO_MODULE_H
+#define IO_MODULE_H
 /*----------------------------------------------------------------------------*/
 /* for type def'ns */
 #include <stdint.h>
@@ -72,7 +72,7 @@ typedef struct io_module_func {
 } io_module_func __attribute__((aligned(__WORDSIZE)));
 /*----------------------------------------------------------------------------*/
 /* set I/O module context */
-int SetInterfaceInfo(char *);
+int SetNetEnv(char *port_list, char *port_stat_list);
 
 /* retrive device-specific endian type */
 int FetchEndianType();
@@ -106,6 +106,10 @@ extern io_module_func netmap_module_func;
 /* registered onvm context */
 extern io_module_func onvm_module_func;
 
+/* check I/O module access permissions */
+int
+CheckIOModuleAccessPermissions();
+
 /* Macro to assign IO module */
 #define AssignIOModule(m) {						\
 		if (!strcmp(m, "psio"))					\
@@ -120,4 +124,4 @@ extern io_module_func onvm_module_func;
 			assert(0);					\
 	}
 /*----------------------------------------------------------------------------*/
-#endif /* !__IO_MODULE_H__ */
+#endif /* IO_MODULE_H */

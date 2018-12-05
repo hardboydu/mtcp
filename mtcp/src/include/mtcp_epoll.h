@@ -1,5 +1,5 @@
-#ifndef __MTCP_EPOLL_H_
-#define __MTCP_EPOLL_H_
+#ifndef MTCP_EPOLL_H
+#define MTCP_EPOLL_H
 
 #include "mtcp_api.h"
 
@@ -50,6 +50,9 @@ struct mtcp_epoll_event
 int 
 mtcp_epoll_create(mctx_t mctx, int size);
 /*----------------------------------------------------------------------------*/
+int
+mtcp_epoll_create1(mctx_t mctx, int flags);
+/*----------------------------------------------------------------------------*/
 int 
 mtcp_epoll_ctl(mctx_t mctx, int epid, 
 		int op, int sockid, struct mtcp_epoll_event *event);
@@ -66,4 +69,4 @@ EventToString(uint32_t event);
 };
 #endif
 
-#endif /* __MTCP_EPOLL_H_ */
+#endif /* MTCP_EPOLL_H */

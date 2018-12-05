@@ -1,5 +1,5 @@
-#ifndef __CONFIG_H_
-#define __CONFIG_H_
+#ifndef CONFIG_H
+#define CONFIG_H
 
 #include "ps.h"
 
@@ -35,10 +35,6 @@ PrintInterfaceInfo();
 void 
 PrintRoutingTable();
 
-/* set socket modes */
-int
-SetSocketMode(int8_t socket_mode);
-
 /* fetch mask from prefix */
 uint32_t 
 MaskFromPrefix(int prefix);
@@ -49,4 +45,4 @@ ParseMACAddress(unsigned char *haddr, char *haddr_str);
 int 
 ParseIPAddress(uint32_t *ip_addr, char *ip_str);
 
-#endif /* __CONFIG_H_ */
+#endif /* CONFIG_H */

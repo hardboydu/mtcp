@@ -32,6 +32,8 @@
 /* for ip defragging */
 #include <rte_ip_frag.h>
 #endif
+/* for ioctl funcs */
+#include <dpdk_iface_common.h>
 /*----------------------------------------------------------------------------*/
 /* Essential macros */
 #define MAX_RX_QUEUE_PER_LCORE		MAX_CPUS
@@ -45,9 +47,10 @@
 #define MBUF_SIZE 			(BUF_SIZE + sizeof(struct rte_mbuf) + RTE_PKTMBUF_HEADROOM)
 #define NB_MBUF				8192
 #define MEMPOOL_CACHE_SIZE		256
-//#define RX_IDLE_ENABLE			1
+#ifdef ENFORCE_RX_IDLE
+#define RX_IDLE_ENABLE			1
 #define RX_IDLE_TIMEOUT			1	/* in micro-seconds */
-#define RX_IDLE_THRESH			64
+#endif
 
 /*
  * RX and TX Prefetch, Host, and Write-back threshold values should be
@@ -84,8 +87,8 @@
 #define	ETHER_PREAMBLE			8
 #define ETHER_OVR			(ETHER_CRC_LEN + ETHER_PREAMBLE + ETHER_IFG)
 
-static uint16_t nb_rxd = 		RTE_TEST_RX_DESC_DEFAULT;
-static uint16_t nb_txd = 		RTE_TEST_TX_DESC_DEFAULT;
+static const uint16_t nb_rxd = 		RTE_TEST_RX_DESC_DEFAULT;
+static const uint16_t nb_txd = 		RTE_TEST_TX_DESC_DEFAULT;
 /*----------------------------------------------------------------------------*/
 /* packet memory pools for storing packet bufs */
 static struct rte_mempool *pktmbuf_pool[MAX_CPUS] = {NULL};
@@ -102,6 +105,12 @@ static struct rte_eth_conf port_conf = {
 	.rxmode = {
 		.mq_mode	= 	ETH_MQ_RX_RSS,
 		.max_rx_pkt_len = 	ETHER_MAX_LEN,
+		.offloads	=	(DEV_RX_OFFLOAD_CRC_STRIP |
+					 DEV_RX_OFFLOAD_CHECKSUM
+#ifdef ENABLELRO
+					 DEV_RX_OFFLOAD_TCP_LRO
+#endif
+					 ),
 		.split_hdr_size = 	0,
 		.header_split   = 	0, /**< Header Split disabled */
 		.hw_ip_checksum = 	1, /**< IP checksum offload enabled */
@@ -149,7 +158,7 @@ static const struct rte_eth_txconf tx_conf = {
 };
 
 struct mbuf_table {
-	unsigned len; /* length of queued packets */
+	uint16_t len; /* length of queued packets */
 	struct rte_mbuf *m_table[MAX_PKT_BURST];
 };
 
@@ -175,7 +184,6 @@ struct dpdk_private_context {
 } __rte_cache_aligned;
 
 #ifdef ENABLE_STATS_IOCTL
-#define DEV_NAME				"/dev/dpdk-iface"
 /**
  * stats struct passed on from user space to the driver
  */
@@ -256,9 +264,9 @@ dpdk_init_handle(struct mtcp_thread_context *ctxt)
 #endif	/* !IP_DEFRAG */
 
 #ifdef ENABLE_STATS_IOCTL
-	dpc->fd = open(DEV_NAME, O_RDWR);
+	dpc->fd = open(DEV_PATH, O_RDWR);
 	if (dpc->fd == -1) {
-		TRACE_ERROR("Can't open " DEV_NAME " for context->cpu: %d! "
+		TRACE_ERROR("Can't open " DEV_PATH " for context->cpu: %d! "
 			    "Are you using mlx4/mlx5 driver?\n",
 			    ctxt->cpu);
 	}
@@ -330,7 +338,8 @@ dpdk_send_pkts(struct mtcp_thread_context *ctxt, int ifidx)
 			ss.qid = ctxt->cpu;
 			ss.dev = portid;
 			/* pass the info now */
-			ioctl(dpc->fd, 0, &ss);
+			if (ioctl(dpc->fd, SEND_STATS, &ss) == -1)
+				TRACE_ERROR("Can't update iface stats!\n");
 			dpc->cur_ts = mtcp->cur_ts;
 			if (ctxt->cpu == 0)
 				rte_eth_stats_reset(portid);
@@ -613,7 +622,7 @@ dpdk_load_module(void)
 	/* for Ethernet flow control settings */
 	struct rte_eth_fc_conf fc_conf;
 	/* setting the rss key */
-	static const uint8_t key[] = {
+	static uint8_t key[] = {
 		0x05, 0x05, 0x05, 0x05, 0x05, 0x05, 0x05, 0x05, 0x05, 0x05, /* 10 */
 		0x05, 0x05, 0x05, 0x05, 0x05, 0x05, 0x05, 0x05, 0x05, 0x05, /* 20 */
 		0x05, 0x05, 0x05, 0x05, 0x05, 0x05, 0x05, 0x05, 0x05, 0x05, /* 30 */
@@ -622,7 +631,7 @@ dpdk_load_module(void)
 		0x05, 0x05  /* 60 - 8 */
 	};
 
-	port_conf.rx_adv_conf.rss_conf.rss_key = (uint8_t *)&key;
+	port_conf.rx_adv_conf.rss_conf.rss_key = (uint8_t *)key;
 	port_conf.rx_adv_conf.rss_conf.rss_key_len = sizeof(key);
 
 	if (!CONFIG.multi_process || (CONFIG.multi_process && CONFIG.multi_process_is_master)) {
@@ -718,13 +727,13 @@ dpdk_load_module(void)
 			memset(&fc_conf, 0, sizeof(fc_conf));
                         ret = rte_eth_dev_flow_ctrl_get(portid, &fc_conf);
 			if (ret != 0)
-                                rte_exit(EXIT_FAILURE, "Failed to get flow control info!\n");
+                                TRACE_INFO("Failed to get flow control info!\n");
 
 			/* and just disable the rx/tx flow control */
 			fc_conf.mode = RTE_FC_NONE;
 			ret = rte_eth_dev_flow_ctrl_set(portid, &fc_conf);
                         if (ret != 0)
-                                rte_exit(EXIT_FAILURE, "Failed to set flow control info!: errno: %d\n",
+                                TRACE_INFO("Failed to set flow control info!: errno: %d\n",
                                          ret);
 
 #ifdef DEBUG
@@ -742,7 +751,7 @@ dpdk_load_module(void)
 		check_all_ports_link_status(num_devices_attached, 0xFFFFFFFF);
 	} else { /* CONFIG.multi_process && !CONFIG.multi_process_is_master */
 		for (rxlcore_id = 0; rxlcore_id < CONFIG.num_cores; rxlcore_id++) {
-                        char name[20];
+                        char name[RTE_MEMPOOL_NAMESIZE];
                         sprintf(name, "mbuf_pool-%d", rxlcore_id);
                         /* initialize the mbuf pools */
                         pktmbuf_pool[rxlcore_id] =

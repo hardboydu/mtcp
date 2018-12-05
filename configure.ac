@@ -11,6 +11,10 @@ AC_PROG_CC
 AC_PROG_RANLIB
 AC_LANG(C)
 AC_DISABLE_OPTION_CHECKING
+AC_CHECK_PROG(BC_CHECK,bc,yes)
+if test x"$BC_CHECK" != x"yes" ; then
+    AC_MSG_ERROR([Please install bc before compiling mTCP.])
+fi
 
 # Checks for header files.
 AC_HEADER_STDC
@@ -61,6 +65,9 @@ AC_CHECK_FUNCS([bzero getpagesize gettimeofday memmove memset munmap select sock
 
 # Reset DPDK to 0
 AC_SUBST(DPDK, 0)
+# Reset enforcement value
+AC_SUBST(ENFORCE_RX_IDLE, 0)
+AC_SUBST(RX_IDLE_THRESH, 0)
 # Reset DPDK's LRO to 0
 AC_SUBST(LRO, 0)
 # Reset PSIO to 0
@@ -78,6 +85,12 @@ if test "$with_dpdk_lib" != ""
 then
         AC_SUBST(DPDKLIBPATH, $with_dpdk_lib)
 	AC_SUBST(DPDK, 1)
+	AC_ARG_WITH(stuff, [  --with-rx-idle[=ARG]	how much idle cycles needed before enforcing timeout (dpdk-only)])
+	if test "$with_rx_idle" != ""
+	then
+		AC_SUBST(ENFORCE_RX_IDLE, 1)
+		AC_SUBST(RX_IDLE_THRESH, $with_rx_idle)
+	fi
 fi
 AM_CONDITIONAL([DPDK], [test x$DPDK = x1])
 
